@@ -1,0 +1,6 @@
+{
+  "name": "Promptify",
+  "description": "Espaço de trabalho para gerenciar, editar e testar prompts com suporte a variáveis e IA",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
