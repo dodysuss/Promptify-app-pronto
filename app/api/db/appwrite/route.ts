@@ -1,11 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isSafeHttpUrl, normalizeApiKey, normalizeConnectionString, sanitizeText } from '@/lib/security-helpers';
 
 export async function POST(req: NextRequest) {
   try {
-    const { action, endpoint, projectId, databaseId, apiKey, prompts } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const { action, endpoint, projectId, databaseId, apiKey, prompts, email, password, name } = body as Record<string, any>;
 
-    const targetEndpoint = (endpoint || 'https://cloud.appwrite.io/v1').replace(/\/+$/, '');
-    const projId = projectId?.trim();
+    const targetEndpoint = (typeof endpoint === 'string' ? endpoint : 'https://cloud.appwrite.io/v1').replace(/\/+$/, '');
+    const projId = sanitizeText(typeof projectId === 'string' ? projectId : '', 200);
+    const dbId = sanitizeText(typeof databaseId === 'string' ? databaseId : 'promptify_db', 100);
+    const normalizedApiKey = normalizeApiKey(typeof apiKey === 'string' ? apiKey : '');
+
+    if (!isSafeHttpUrl(targetEndpoint)) {
+      return NextResponse.json({ error: 'Endpoint Appwrite inválido.' }, { status: 400 });
+    }
 
     if (!projId) {
       return NextResponse.json(
@@ -56,13 +64,13 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'provision') {
-      const dbId = (databaseId || 'promptify_db').trim();
+      const safeDbId = dbId || 'promptify_db';
       const headers: Record<string, string> = {
         'X-Appwrite-Project': projId,
         'Content-Type': 'application/json',
       };
-      if (apiKey) {
-        headers['X-Appwrite-Key'] = apiKey.trim();
+      if (normalizedApiKey) {
+        headers['X-Appwrite-Key'] = normalizedApiKey;
       }
 
       const createdItems: string[] = [];
@@ -87,17 +95,17 @@ export async function POST(req: NextRequest) {
 
       // 1. Create Database
       const dbRes = await appwriteFetch('/databases', 'POST', {
-        databaseId: dbId,
+        databaseId: safeDbId,
         name: 'Promptify Database',
         enabled: true,
       });
 
       if (dbRes.ok) {
-        createdItems.push(`Banco de dados "${dbId}" criado com sucesso.`);
+        createdItems.push(`Banco de dados "${safeDbId}" criado com sucesso.`);
       } else if (dbRes.status === 409) {
-        createdItems.push(`Banco de dados "${dbId}" já existente.`);
+        createdItems.push(`Banco de dados "${safeDbId}" já existente.`);
       } else {
-        errors.push(`Aviso Banco "${dbId}": ${dbRes.data?.message || 'Verifique as permissões da API Key'}`);
+        errors.push(`Aviso Banco "${safeDbId}": ${dbRes.data?.message || 'Verifique as permissões da API Key'}`);
       }
 
       // Collections list to build
@@ -158,7 +166,7 @@ export async function POST(req: NextRequest) {
 
       // 2. Create Collections and Attributes
       for (const col of collections) {
-        const colRes = await appwriteFetch(`/databases/${dbId}/collections`, 'POST', {
+        const colRes = await appwriteFetch(`/databases/${safeDbId}/collections`, 'POST', {
           collectionId: col.id,
           name: col.name,
           permissions: [
@@ -181,7 +189,7 @@ export async function POST(req: NextRequest) {
         // Create Attributes
         for (const attr of col.attributes) {
           const attributeObj = attr as { key: string; type: string; size?: number; required?: boolean; default?: any };
-          let attrEndpoint = `/databases/${dbId}/collections/${col.id}/attributes/string`;
+          let attrEndpoint = `/databases/${safeDbId}/collections/${col.id}/attributes/string`;
           let attrBody: any = {
             key: attributeObj.key,
             size: attributeObj.size || 255,
@@ -190,13 +198,13 @@ export async function POST(req: NextRequest) {
           };
 
           if (attr.type === 'boolean') {
-            attrEndpoint = `/databases/${dbId}/collections/${col.id}/attributes/boolean`;
+            attrEndpoint = `/databases/${safeDbId}/collections/${col.id}/attributes/boolean`;
             delete attrBody.size;
           } else if (attr.type === 'integer') {
-            attrEndpoint = `/databases/${dbId}/collections/${col.id}/attributes/integer`;
+            attrEndpoint = `/databases/${safeDbId}/collections/${col.id}/attributes/integer`;
             delete attrBody.size;
           } else if (attr.type === 'float') {
-            attrEndpoint = `/databases/${dbId}/collections/${col.id}/attributes/float`;
+            attrEndpoint = `/databases/${safeDbId}/collections/${col.id}/attributes/float`;
             delete attrBody.size;
           }
 
@@ -214,9 +222,15 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'auth-register') {
-      const { email, password, name } = await req.json().catch(() => ({}));
       if (!email || !password) {
         return NextResponse.json({ error: 'E-mail e senha são obrigatórios.' }, { status: 400 });
+      }
+
+      const safeEmail = sanitizeText(String(email || ''), 255).toLowerCase();
+      const safePassword = sanitizeText(String(password || ''), 200);
+      const safeName = sanitizeText(String(name || ''), 120);
+      if (!safeEmail || !safePassword || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(safeEmail)) {
+        return NextResponse.json({ error: 'E-mail inválido.' }, { status: 400 });
       }
 
       const headers: Record<string, string> = {
@@ -230,9 +244,9 @@ export async function POST(req: NextRequest) {
         headers,
         body: JSON.stringify({
           userId: 'unique()',
-          email,
-          password,
-          name: name || email.split('@')[0],
+          email: safeEmail,
+          password: safePassword,
+          name: safeName || safeEmail.split('@')[0],
         }),
       });
 
@@ -248,7 +262,7 @@ export async function POST(req: NextRequest) {
       const sessRes = await fetch(`${targetEndpoint}/account/sessions/email`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: safeEmail, password: safePassword }),
       });
 
       const sessData = await sessRes.json();
@@ -265,9 +279,14 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'auth-login') {
-      const { email, password } = await req.json().catch(() => ({}));
       if (!email || !password) {
         return NextResponse.json({ error: 'E-mail e senha são obrigatórios.' }, { status: 400 });
+      }
+
+      const safeEmail = sanitizeText(String(email || ''), 255).toLowerCase();
+      const safePassword = sanitizeText(String(password || ''), 200);
+      if (!safeEmail || !safePassword || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(safeEmail)) {
+        return NextResponse.json({ error: 'E-mail inválido.' }, { status: 400 });
       }
 
       const headers: Record<string, string> = {
@@ -278,7 +297,7 @@ export async function POST(req: NextRequest) {
       const sessRes = await fetch(`${targetEndpoint}/account/sessions/email`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: safeEmail, password: safePassword }),
       });
 
       const sessData = await sessRes.json();
@@ -305,14 +324,14 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Lista de prompts inválida.' }, { status: 400 });
       }
 
-      const dbId = (databaseId || 'promptify_db').trim();
+      const safeDbId = dbId || 'promptify_db';
       const count = prompts.length;
 
       return NextResponse.json({
         success: true,
-        message: `Sincronizados ${count} prompts no banco Appwrite "${dbId}" com sucesso!`,
+        message: `Sincronizados ${count} prompts no banco Appwrite "${safeDbId}" com sucesso!`,
         syncedCount: count,
-        databaseId: dbId,
+        databaseId: safeDbId,
       });
     }
 

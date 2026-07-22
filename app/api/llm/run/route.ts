@@ -1,24 +1,53 @@
 import { GoogleGenAI } from '@google/genai';
 import { NextRequest, NextResponse } from 'next/server';
+import { isAllowedProvider, normalizeApiKey, normalizeModel, sanitizeText } from '@/lib/security-helpers';
+
+const MAX_PROMPT_LENGTH = 12000;
+const MAX_SYSTEM_MESSAGE_LENGTH = 8000;
+const MAX_TOKENS = 8192;
+const REQUEST_TIMEOUT_MS = 30000;
+
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
-    const { promptTemplate, systemMessage, provider, apiKey, model, temperature, maxTokens } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const { promptTemplate, systemMessage, provider, apiKey, model, temperature, maxTokens } = body as Record<string, any>;
 
-    if (!promptTemplate) {
+    const promptText = sanitizeText(typeof promptTemplate === 'string' ? promptTemplate : '', MAX_PROMPT_LENGTH);
+    const systemText = sanitizeText(typeof systemMessage === 'string' ? systemMessage : '', MAX_SYSTEM_MESSAGE_LENGTH);
+
+    if (!promptText) {
       return NextResponse.json({ error: 'Nenhum prompt foi fornecido' }, { status: 400 });
     }
 
-    const tempNum = typeof temperature === 'number' ? temperature : 0.7;
-    const tokensNum = typeof maxTokens === 'number' ? maxTokens : 2048;
+    const providerName = typeof provider === 'string' ? provider.toLowerCase() : 'gemini';
+    if (!isAllowedProvider(providerName)) {
+      return NextResponse.json({ error: 'Provedor de IA inválido.' }, { status: 400 });
+    }
 
-    const fullPrompt = systemMessage
-      ? `System Instructions:\n${systemMessage}\n\nUser Request / Prompt:\n${promptTemplate}`
-      : promptTemplate;
+    const tempNum = typeof temperature === 'number' ? Math.max(0, Math.min(2, temperature)) : 0.7;
+    const tokensNum = typeof maxTokens === 'number' ? Math.max(1, Math.min(MAX_TOKENS, maxTokens)) : 2048;
+
+    const fullPrompt = systemText
+      ? `System Instructions:\n${systemText}\n\nUser Request / Prompt:\n${promptText}`
+      : promptText;
+
+    const selectedModel = normalizeModel(typeof model === 'string' ? model : '') || undefined;
+    const normalizedApiKey = normalizeApiKey(typeof apiKey === 'string' ? apiKey : '');
 
     // 1. OPENROUTER PROVIDER
-    if (provider === 'openrouter') {
-      const openRouterKey = apiKey || process.env.OPENROUTER_API_KEY;
+    if (providerName === 'openrouter') {
+      const openRouterKey = normalizedApiKey || process.env.OPENROUTER_API_KEY;
       if (!openRouterKey) {
         return NextResponse.json(
           {
@@ -29,23 +58,22 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const selectedModel = model || 'anthropic/claude-3.5-sonnet';
-
-      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      const safeModel = selectedModel || 'anthropic/claude-3.5-sonnet';
+      const response = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${openRouterKey}`,
+          Authorization: `Bearer ${openRouterKey}`,
           'HTTP-Referer': 'https://promptify.app',
           'X-Title': 'Promptify Workspace',
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: selectedModel,
+          model: safeModel,
           temperature: tempNum,
           max_tokens: tokensNum,
           messages: [
-            ...(systemMessage ? [{ role: 'system', content: systemMessage }] : []),
-            { role: 'user', content: promptTemplate },
+            ...(systemText ? [{ role: 'system', content: systemText }] : []),
+            { role: 'user', content: promptText },
           ],
         }),
       });
@@ -60,12 +88,12 @@ export async function POST(req: NextRequest) {
 
       const data = await response.json();
       const textOutput = data.choices?.[0]?.message?.content || 'Nenhuma resposta retornada pelo OpenRouter.';
-      return NextResponse.json({ text: textOutput, provider: 'openrouter', model: selectedModel });
+      return NextResponse.json({ text: textOutput, provider: 'openrouter', model: safeModel });
     }
 
     // 2. OPENAI PROVIDER
-    if (provider === 'openai') {
-      const openAiKey = (apiKey || process.env.OPENAI_API_KEY || '').trim();
+    if (providerName === 'openai') {
+      const openAiKey = (normalizedApiKey || process.env.OPENAI_API_KEY || '').trim();
       if (!openAiKey) {
         return NextResponse.json(
           {
@@ -76,23 +104,23 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const selectedModel = (model || 'gpt-4o').trim();
+      const resolvedModel = (selectedModel || 'gpt-4o').trim();
       const isReasoningModel =
-        selectedModel.startsWith('o1') ||
-        selectedModel.startsWith('o3') ||
-        selectedModel.startsWith('o-');
+        resolvedModel.startsWith('o1') ||
+        resolvedModel.startsWith('o3') ||
+        resolvedModel.startsWith('o-');
 
       const messages: Array<{ role: string; content: string }> = [];
-      if (systemMessage) {
+      if (systemText) {
         messages.push({
           role: isReasoningModel ? 'developer' : 'system',
-          content: systemMessage,
+          content: systemText,
         });
       }
-      messages.push({ role: 'user', content: promptTemplate });
+      messages.push({ role: 'user', content: promptText });
 
       const requestBody: any = {
-        model: selectedModel,
+        model: resolvedModel,
         messages,
       };
 
@@ -103,7 +131,7 @@ export async function POST(req: NextRequest) {
         requestBody.max_tokens = tokensNum;
       }
 
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      const response = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${openAiKey}`,
@@ -131,8 +159,8 @@ export async function POST(req: NextRequest) {
     }
 
     // 3. ANTHROPIC PROVIDER
-    if (provider === 'anthropic') {
-      const anthropicKey = apiKey || process.env.ANTHROPIC_API_KEY;
+    if (providerName === 'anthropic') {
+      const anthropicKey = normalizedApiKey || process.env.ANTHROPIC_API_KEY;
       if (!anthropicKey) {
         return NextResponse.json(
           {
@@ -143,7 +171,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
+      const response = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
           'x-api-key': anthropicKey,
@@ -151,11 +179,11 @@ export async function POST(req: NextRequest) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: model || 'claude-3-5-sonnet-20241022',
+          model: selectedModel || 'claude-3-5-sonnet-20241022',
           temperature: tempNum,
           max_tokens: tokensNum,
-          system: systemMessage || undefined,
-          messages: [{ role: 'user', content: promptTemplate }],
+          system: systemText || undefined,
+          messages: [{ role: 'user', content: promptText }],
         }),
       });
 
@@ -173,7 +201,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 4. DEFAULT: GOOGLE GEMINI PROVIDER
-    const geminiKey = apiKey || process.env.GEMINI_API_KEY;
+    const geminiKey = normalizedApiKey || process.env.GEMINI_API_KEY;
     if (!geminiKey) {
       return NextResponse.json(
         { error: 'Chave GEMINI_API_KEY não foi encontrada.' },
@@ -183,7 +211,7 @@ export async function POST(req: NextRequest) {
 
     const ai = new GoogleGenAI({ apiKey: geminiKey });
     const response = await ai.models.generateContent({
-      model: model || 'gemini-2.5-flash',
+      model: selectedModel || 'gemini-2.5-flash',
       contents: fullPrompt,
       config: {
         temperature: tempNum,

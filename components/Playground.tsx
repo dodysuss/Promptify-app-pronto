@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { PromptItem } from '@/types/prompt';
 import { extractVariables, replaceVariables } from '@/lib/variables';
+import { safeParseJson } from '@/lib/security-helpers';
 import {
   Play,
   Trash2,
@@ -72,12 +73,17 @@ export default function Playground({
   );
 
   // Sync when selected prompt changes
+  const promptStateKey = currentPrompt?.id ?? 'custom';
   useEffect(() => {
-    if (currentPrompt) {
-      setSystemMessage(currentPrompt.systemMessage || '');
-      setPromptTemplate(currentPrompt.promptTemplate || '');
+    if (!currentPrompt) {
+      return;
     }
-  }, [currentPrompt]);
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSystemMessage(currentPrompt.systemMessage || '');
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPromptTemplate(currentPrompt.promptTemplate || '');
+  }, [promptStateKey]);
 
   // Variables handling
   const extractedVars = useMemo(() => {
@@ -125,7 +131,7 @@ export default function Playground({
     if (typeof window === 'undefined') return [];
     try {
       const saved = localStorage.getItem('promptify_playground_history');
-      return saved ? JSON.parse(saved) : [];
+      return saved ? safeParseJson(saved) ?? [] : [];
     } catch {
       return [];
     }
@@ -273,8 +279,8 @@ export default function Playground({
     let storedKeys: Record<string, string> = {};
     if (typeof window !== 'undefined') {
       try {
-        const k = localStorage.getItem('promptify_api_keys');
-        if (k) storedKeys = JSON.parse(k);
+        const k = window.sessionStorage.getItem('promptify_api_keys');
+        if (k) storedKeys = safeParseJson(k) ?? {};
       } catch {}
     }
 

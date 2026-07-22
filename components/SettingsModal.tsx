@@ -24,6 +24,7 @@ import {
   Trash2
 } from 'lucide-react';
 import { PromptItem } from '@/types/prompt';
+import { safeParseJson } from '@/lib/security-helpers';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -74,32 +75,32 @@ export default function SettingsModal({
   const [openRouterKey, setOpenRouterKey] = useState(() => {
     if (typeof window === 'undefined') return '';
     try {
-      const stored = localStorage.getItem('promptify_api_keys');
-      return stored ? JSON.parse(stored).openRouter || '' : '';
+      const stored = window.sessionStorage.getItem('promptify_api_keys');
+      return stored ? safeParseJson(stored)?.openRouter || '' : '';
     } catch { return ''; }
   });
 
   const [openAiKey, setOpenAiKey] = useState(() => {
     if (typeof window === 'undefined') return '';
     try {
-      const stored = localStorage.getItem('promptify_api_keys');
-      return stored ? JSON.parse(stored).openAi || '' : '';
+      const stored = window.sessionStorage.getItem('promptify_api_keys');
+      return stored ? safeParseJson(stored)?.openAi || '' : '';
     } catch { return ''; }
   });
 
   const [anthropicKey, setAnthropicKey] = useState(() => {
     if (typeof window === 'undefined') return '';
     try {
-      const stored = localStorage.getItem('promptify_api_keys');
-      return stored ? JSON.parse(stored).anthropic || '' : '';
+      const stored = window.sessionStorage.getItem('promptify_api_keys');
+      return stored ? safeParseJson(stored)?.anthropic || '' : '';
     } catch { return ''; }
   });
 
   const [geminiKey, setGeminiKey] = useState(() => {
     if (typeof window === 'undefined') return '';
     try {
-      const stored = localStorage.getItem('promptify_api_keys');
-      return stored ? JSON.parse(stored).gemini || '' : '';
+      const stored = window.sessionStorage.getItem('promptify_api_keys');
+      return stored ? safeParseJson(stored)?.gemini || '' : '';
     } catch { return ''; }
   });
 
@@ -109,7 +110,7 @@ export default function SettingsModal({
   // Neon DB Connection State
   const [neonConnString, setNeonConnString] = useState(() => {
     if (typeof window === 'undefined') return '';
-    return localStorage.getItem('promptify_neon_url') || '';
+    return window.sessionStorage.getItem('promptify_neon_url') || '';
   });
   const [neonTesting, setNeonTesting] = useState(false);
   const [neonStatus, setNeonStatus] = useState<{
@@ -127,29 +128,29 @@ export default function SettingsModal({
   const [appwriteEndpoint, setAppwriteEndpoint] = useState(() => {
     if (typeof window === 'undefined') return 'https://cloud.appwrite.io/v1';
     try {
-      const saved = localStorage.getItem('promptify_appwrite_config');
-      return saved ? JSON.parse(saved).endpoint || 'https://cloud.appwrite.io/v1' : 'https://cloud.appwrite.io/v1';
+      const saved = window.sessionStorage.getItem('promptify_appwrite_config');
+      return saved ? safeParseJson(saved)?.endpoint || 'https://cloud.appwrite.io/v1' : 'https://cloud.appwrite.io/v1';
     } catch { return 'https://cloud.appwrite.io/v1'; }
   });
   const [appwriteProjectId, setAppwriteProjectId] = useState(() => {
     if (typeof window === 'undefined') return '';
     try {
-      const saved = localStorage.getItem('promptify_appwrite_config');
-      return saved ? JSON.parse(saved).projectId || '' : '';
+      const saved = window.sessionStorage.getItem('promptify_appwrite_config');
+      return saved ? safeParseJson(saved)?.projectId || '' : '';
     } catch { return ''; }
   });
   const [appwriteDatabaseId, setAppwriteDatabaseId] = useState(() => {
     if (typeof window === 'undefined') return 'promptify_db';
     try {
-      const saved = localStorage.getItem('promptify_appwrite_config');
-      return saved ? JSON.parse(saved).databaseId || 'promptify_db' : 'promptify_db';
+      const saved = window.sessionStorage.getItem('promptify_appwrite_config');
+      return saved ? safeParseJson(saved)?.databaseId || 'promptify_db' : 'promptify_db';
     } catch { return 'promptify_db'; }
   });
   const [appwriteApiKey, setAppwriteApiKey] = useState(() => {
     if (typeof window === 'undefined') return '';
     try {
-      const saved = localStorage.getItem('promptify_appwrite_config');
-      return saved ? JSON.parse(saved).apiKey || '' : '';
+      const saved = window.sessionStorage.getItem('promptify_appwrite_config');
+      return saved ? safeParseJson(saved)?.apiKey || '' : '';
     } catch { return ''; }
   });
 
@@ -181,8 +182,8 @@ export default function SettingsModal({
   const [appwriteUser, setAppwriteUser] = useState<{ id: string; email: string; name?: string } | null>(() => {
     if (typeof window === 'undefined') return null;
     try {
-      const u = localStorage.getItem('promptify_appwrite_user');
-      return u ? JSON.parse(u) : null;
+      const u = window.sessionStorage.getItem('promptify_appwrite_user');
+      return u ? safeParseJson(u) : null;
     } catch {
       return null;
     }
@@ -205,10 +206,10 @@ export default function SettingsModal({
       anthropic: anthropicKey,
       gemini: geminiKey,
     };
-    localStorage.setItem('promptify_api_keys', JSON.stringify(keysObj));
+    window.sessionStorage.setItem('promptify_api_keys', JSON.stringify(keysObj));
 
     // Save Neon Connection string
-    localStorage.setItem('promptify_neon_url', neonConnString);
+    window.sessionStorage.setItem('promptify_neon_url', neonConnString);
 
     // Save Appwrite Config
     const appwriteObj = {
@@ -217,7 +218,7 @@ export default function SettingsModal({
       databaseId: appwriteDatabaseId,
       apiKey: appwriteApiKey,
     };
-    localStorage.setItem('promptify_appwrite_config', JSON.stringify(appwriteObj));
+    window.sessionStorage.setItem('promptify_appwrite_config', JSON.stringify(appwriteObj));
 
     setSavedSuccess(true);
     setTimeout(() => {
@@ -383,7 +384,7 @@ export default function SettingsModal({
         setAuthSuccessMsg(data.message);
         if (data.user) {
           setAppwriteUser(data.user);
-          localStorage.setItem('promptify_appwrite_user', JSON.stringify(data.user));
+          window.sessionStorage.setItem('promptify_appwrite_user', JSON.stringify(data.user));
         }
         setAuthPassword('');
       }
@@ -396,7 +397,7 @@ export default function SettingsModal({
 
   const handleAppwriteLogout = () => {
     setAppwriteUser(null);
-    localStorage.removeItem('promptify_appwrite_user');
+    window.sessionStorage.removeItem('promptify_appwrite_user');
     setAuthSuccessMsg('Você saiu da sua conta Appwrite.');
   };
 
@@ -430,7 +431,7 @@ export default function SettingsModal({
           latencyMs: data.latencyMs,
           promptsInDb: data.promptsInDb,
         });
-        localStorage.setItem('promptify_neon_url', neonConnString.trim());
+        window.sessionStorage.setItem('promptify_neon_url', neonConnString.trim());
       }
     } catch (err: any) {
       setNeonStatus({ success: false, message: err?.message || 'Erro ao testar conexão.' });

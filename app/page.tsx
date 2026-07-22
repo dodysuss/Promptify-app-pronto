@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { PromptItem } from '@/types/prompt';
 import { INITIAL_PROMPTS } from '@/lib/initial-prompts';
+import { safeParseJson, safeStorageGetString, safeStorageRemoveItem, safeStorageSetString } from '@/lib/security-helpers';
 import Sidebar from '@/components/Sidebar';
 import Header from '@/components/Header';
 import PromptFeed from '@/components/PromptFeed';
@@ -16,12 +17,10 @@ export default function HomePage() {
   const [prompts, setPrompts] = useState<PromptItem[]>(() => {
     if (typeof window !== 'undefined') {
       try {
-        const saved = localStorage.getItem('promptify_prompts');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            return parsed;
-          }
+        const saved = safeStorageGetString('promptify_prompts');
+        const parsed = safeParseJson(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
         }
       } catch (e) {
         console.error('Failed loading prompts from localStorage:', e);
@@ -71,11 +70,9 @@ export default function HomePage() {
   const [folders, setFolders] = useState<string[]>(() => {
     if (typeof window !== 'undefined') {
       try {
-        const saved = localStorage.getItem('promptify_folders');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-        }
+        const saved = safeStorageGetString('promptify_folders');
+        const parsed = safeParseJson(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       } catch (e) {}
     }
     return [
@@ -92,11 +89,9 @@ export default function HomePage() {
   const [categories, setCategories] = useState<string[]>(() => {
     if (typeof window !== 'undefined') {
       try {
-        const saved = localStorage.getItem('promptify_categories');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-        }
+        const saved = safeStorageGetString('promptify_categories');
+        const parsed = safeParseJson(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       } catch (e) {}
     }
     return ['Marketing', 'Engenharia', 'Vendas', 'Suporte', 'Produtividade', 'Design', 'Automação'];
@@ -105,11 +100,9 @@ export default function HomePage() {
   const [projects, setProjects] = useState<string[]>(() => {
     if (typeof window !== 'undefined') {
       try {
-        const saved = localStorage.getItem('promptify_projects');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-        }
+        const saved = safeStorageGetString('promptify_projects');
+        const parsed = safeParseJson(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       } catch (e) {}
     }
     return ['Projeto Alpha', 'Lançamento Q3', 'Automação CRM', 'Appwrite Backend'];
@@ -118,25 +111,25 @@ export default function HomePage() {
   // Save state to localStorage on change
   useEffect(() => {
     if (prompts.length > 0) {
-      localStorage.setItem('promptify_prompts', JSON.stringify(prompts));
+      safeStorageSetString('promptify_prompts', JSON.stringify(prompts));
     }
   }, [prompts]);
 
   useEffect(() => {
     if (folders.length > 0) {
-      localStorage.setItem('promptify_folders', JSON.stringify(folders));
+      safeStorageSetString('promptify_folders', JSON.stringify(folders));
     }
   }, [folders]);
 
   useEffect(() => {
     if (categories.length > 0) {
-      localStorage.setItem('promptify_categories', JSON.stringify(categories));
+      safeStorageSetString('promptify_categories', JSON.stringify(categories));
     }
   }, [categories]);
 
   useEffect(() => {
     if (projects.length > 0) {
-      localStorage.setItem('promptify_projects', JSON.stringify(projects));
+      safeStorageSetString('promptify_projects', JSON.stringify(projects));
     }
   }, [projects]);
 
@@ -242,7 +235,7 @@ export default function HomePage() {
       // 'recente' default
       return b.id.localeCompare(a.id);
     });
-  }, [prompts, searchQuery, activeTab, selectedFolder, selectedTag, filterModel, filterCategory, filterStatus, sortBy]);
+  }, [prompts, searchQuery, activeTab, selectedFolder, selectedCategory, selectedProject, selectedTag, filterModel, filterCategory, filterStatus, sortBy]);
 
   // Currently selected prompt item
   const selectedPrompt = useMemo(() => {
@@ -394,7 +387,7 @@ export default function HomePage() {
   };
 
   const handleResetData = () => {
-    localStorage.removeItem('promptify_prompts');
+    safeStorageRemoveItem('promptify_prompts');
     setPrompts(INITIAL_PROMPTS);
     setSelectedPromptId(INITIAL_PROMPTS[0].id);
   };

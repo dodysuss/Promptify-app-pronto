@@ -66,30 +66,41 @@ export default function PromptModal({
   });
 
   // Sync form state when modal opens or initialData changes
+  const modalResetKey = `${isOpen ? 'open' : 'closed'}:${initialData?.id ?? 'new'}`;
   useEffect(() => {
-    if (isOpen) {
-      setTitle(initialData?.title || '');
-      setShortDescription(initialData?.shortDescription || '');
-      setFolder(initialData?.folder || folders[0] || 'Conteúdo');
-      setCategoryTag(initialData?.categoryTag || categories[0] || 'Geral');
-      setProject(initialData?.project || '');
-      setModelTag(initialData?.modelTag || 'Gemini');
-      setTagInput('');
-      setTags(
-        initialData?.tags ? [...initialData.tags] : initialData ? [] : ['análise', 'gpt-4']
-      );
-      setSystemMessage(initialData?.systemMessage || '');
-      setPromptTemplate(initialData?.promptTemplate || '');
-      setVersionComment(
-        initialData ? 'Melhoria das instruções e parâmetros' : 'Primeira versão do prompt'
-      );
-      setExtraBlocks(
-        initialData?.extraBlocks && initialData.extraBlocks.length > 0
-          ? initialData.extraBlocks.map((b) => ({ ...b }))
-          : []
-      );
+    if (!isOpen) {
+      return;
     }
-  }, [isOpen, initialData, folders, categories, projects]);
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setTitle(initialData?.title || '');
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setShortDescription(initialData?.shortDescription || '');
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setFolder(initialData?.folder || folders[0] || 'Conteúdo');
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCategoryTag(initialData?.categoryTag || categories[0] || 'Geral');
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setProject(initialData?.project || '');
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setModelTag(initialData?.modelTag || 'Gemini');
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setTagInput('');
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setTags(initialData?.tags ? [...initialData.tags] : initialData ? [] : ['análise', 'gpt-4']);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSystemMessage(initialData?.systemMessage || '');
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPromptTemplate(initialData?.promptTemplate || '');
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setVersionComment(initialData ? 'Melhoria das instruções e parâmetros' : 'Primeira versão do prompt');
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setExtraBlocks(
+      initialData?.extraBlocks && initialData.extraBlocks.length > 0
+        ? initialData.extraBlocks.map((b) => ({ ...b }))
+        : []
+    );
+  }, [modalResetKey, folders, categories, projects]);
 
   if (!isOpen) return null;
 

@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { neon } from '@neondatabase/serverless';
+import { isValidPostgresUrl, normalizeConnectionString, sanitizeText } from '@/lib/security-helpers';
 
 export async function POST(req: NextRequest) {
   try {
-    const { action, connectionString, prompts } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const { action, connectionString, prompts } = body as Record<string, any>;
 
-    const dbUrl = connectionString || process.env.DATABASE_URL || process.env.NEON_DATABASE_URL;
+    const dbUrl = normalizeConnectionString(typeof connectionString === 'string' ? connectionString : '') || process.env.DATABASE_URL || process.env.NEON_DATABASE_URL;
+    if (!isValidPostgresUrl(dbUrl)) {
+      return NextResponse.json({ error: 'URL de conexão Neon inválida.' }, { status: 400 });
+    }
 
     if (!dbUrl) {
       return NextResponse.json(
